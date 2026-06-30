@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server that lets AI models interact wi
 
 Built to be **packaged once and reused across many Fusion HCM customers**, regardless of which modules they license, how their flexfields are configured, or which Oracle release they run.
 
-> ⚠️ **Status:** Early development. The technical design is complete ([DESIGN.md](DESIGN.md)); implementation is starting with Phase 1 (read core).
+> ⚠️ **Status:** Early development. The technical design is complete ([DESIGN.md](DESIGN.md)). Phase 1 **foundation** (config, auth, ADF REST client, server skeleton) is in place; the read tools land next.
 
 ---
 
@@ -56,7 +56,42 @@ Writes (`mutate_record`, `run_action`), ATOM change-feeds, and BI Publisher tool
 
 ## Stack
 
-Python · [FastMCP](https://github.com/jlowin/fastmcp) · `httpx` · `pydantic`
+Python · [FastMCP](https://github.com/modelcontextprotocol/python-sdk) · `httpx` · `pydantic`
+Packaged as a Docker/OCI image (primary) built from a hatchling wheel.
+
+## Getting started
+
+### Configure
+
+```bash
+cp config.example.toml config.toml   # then edit; supply secrets via HCM_* env vars
+```
+
+Required: `server.base_url` (or `HCM_BASE_URL`). Credentials should come from environment
+variables (`HCM_USERNAME`/`HCM_PASSWORD`, or `HCM_CLIENT_ID`/`HCM_CLIENT_SECRET`/`HCM_TOKEN_URL`),
+never the committed file. See [config.example.toml](config.example.toml).
+
+### Run with Docker (primary)
+
+```bash
+docker build -t aj-fusion-hcm-mcp .
+docker run --rm -i \
+  -e HCM_BASE_URL="https://your-pod.fa.ocs.oraclecloud.com" \
+  -e HCM_USERNAME="INTEGRATION_USER" -e HCM_PASSWORD="..." \
+  -v "$PWD/config.toml:/app/config.toml:ro" \
+  aj-fusion-hcm-mcp
+```
+
+For hosted HTTP transport, set `transport.type = "http"` (or `HCM_TRANSPORT=http`) and publish `-p 8000:8000`.
+
+### Local development
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+aj-fusion-hcm-mcp          # runs the MCP server over stdio
+```
 
 ## Documentation
 

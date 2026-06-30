@@ -1,0 +1,52 @@
+# Example configuration for the Oracle Fusion HCM MCP server.
+# Copy to config.toml and edit. NEVER commit a real config.toml (it is gitignored).
+#
+# Secrets should be supplied via environment variables instead of this file —
+# env always overrides file values:
+#   HCM_USERNAME / HCM_PASSWORD            (basic auth)
+#   HCM_CLIENT_ID / HCM_CLIENT_SECRET      (oauth2)
+#   HCM_TOKEN_URL / HCM_SCOPE              (oauth2)
+#   HCM_BASE_URL / HCM_REST_VERSION
+#   HCM_TRANSPORT / HCM_HOST / HCM_PORT
+
+[server]
+base_url     = "https://your-pod.fa.ocs.oraclecloud.com"
+rest_version = "11.13.18.05"               # pin to your pod's REST version
+
+[auth]
+type = "basic"                             # "basic" (dev) or "oauth2" (prod)
+# --- basic ---
+# username = "INTEGRATION_USER"            # prefer HCM_USERNAME env var
+# password = "..."                         # prefer HCM_PASSWORD env var
+# --- oauth2 (client credentials) ---
+# token_url     = "https://idcs-xxxx.identity.oraclecloud.com/oauth2/v1/token"
+# client_id     = "..."                    # prefer HCM_CLIENT_ID env var
+# client_secret = "..."                    # prefer HCM_CLIENT_SECRET env var
+# scope         = "urn:opc:..."
+
+[transport]
+type = "stdio"                             # "stdio" (local) or "http" (hosted)
+host = "0.0.0.0"                           # used only when type = "http"
+port = 8000
+
+[features]
+writes_enabled           = false          # Phase 3 — keep off until ready
+sensitive_fields_enabled = false          # unmask PII (national id, salary, DOB)
+atom_enabled             = false          # Phase 4
+bip_enabled              = false          # Phase 5
+
+# Module-mirrored tool groups. "on" / "off" / "auto" (auto = capability discovery).
+[modules]
+core_hr      = "on"
+compensation = "auto"
+absence      = "auto"
+payroll      = "auto"
+recruiting   = "auto"
+talent       = "auto"
+learning     = "auto"
+benefits     = "auto"
+time_labor   = "auto"
+
+[limits]
+default_limit = 25
+max_limit     = 500
