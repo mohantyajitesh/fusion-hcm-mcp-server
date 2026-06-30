@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server that lets AI models interact wi
 
 Built to be **packaged once and reused across many Fusion HCM customers**, regardless of which modules they license, how their flexfields are configured, or which Oracle release they run.
 
-> ⚠️ **Status:** Early development. The technical design is complete ([DESIGN.md](DESIGN.md)). Phase 1 **foundation** (config, auth, ADF REST client, server skeleton) is in place; the read tools land next.
+> ⚠️ **Status:** Early development. The technical design is complete ([DESIGN.md](DESIGN.md)). **Phase 1 read core is implemented** — discovery (`list_resources`, `describe_resource`, `get_capabilities`), generic read (`query_resource`, `get_record`), `q=` filter validation, and the safety layer (PII redaction + audit log). Pending validation against a live pod. Writes/ATOM/BIP follow in later phases.
 
 ---
 

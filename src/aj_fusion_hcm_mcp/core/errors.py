@@ -11,6 +11,14 @@ class ConfigError(FusionMcpError):
     """Raised when configuration is missing or invalid."""
 
 
+class FilterError(FusionMcpError):
+    """Raised when a ``q=`` filter references unknown attributes or bad operators.
+
+    Caught locally against the cached schema *before* any network call, so the
+    model gets an actionable message instead of an opaque Oracle 400.
+    """
+
+
 class HcmApiError(FusionMcpError):
     """A normalized Oracle Fusion HCM REST error.
 

@@ -73,6 +73,11 @@ class TransportConfig(BaseModel):
     port: int = 8000
 
 
+class AuditConfig(BaseModel):
+    enabled: bool = True
+    path: str = "audit/audit.jsonl"
+
+
 class Config(BaseModel):
     server: ServerConfig
     auth: AuthConfig = Field(default_factory=AuthConfig)
@@ -80,6 +85,7 @@ class Config(BaseModel):
     modules: ModulesConfig = Field(default_factory=ModulesConfig)
     limits: LimitsConfig = Field(default_factory=LimitsConfig)
     transport: TransportConfig = Field(default_factory=TransportConfig)
+    audit: AuditConfig = Field(default_factory=AuditConfig)
 
 
 # Maps environment variable -> (section, key). Env overrides file values.
@@ -96,6 +102,7 @@ _ENV_MAP: dict[str, tuple[str, str]] = {
     "HCM_TRANSPORT": ("transport", "type"),
     "HCM_HOST": ("transport", "host"),
     "HCM_PORT": ("transport", "port"),
+    "HCM_AUDIT_PATH": ("audit", "path"),
 }
 
 

@@ -1,8 +1,8 @@
 """FastMCP server assembly and transport selection.
 
-Phase 1 foundation: wires config -> auth -> REST client and registers a
-diagnostic ``server_info`` tool (no live pod required). The read tools
-(discovery, query, capabilities) are added on top of this in the next slice.
+Wires config -> auth -> REST client -> catalog/safety into a shared context,
+then registers the Phase 1 read tools (discovery + query) plus a diagnostic
+``server_info`` tool.
 """
 
 from __future__ import annotations
@@ -13,7 +13,11 @@ from mcp.server.fastmcp import FastMCP
 
 from .auth import build_auth
 from .config import Config, load_config
+from .context import ServerContext
+from .core.catalog import Catalog
 from .core.client import HcmClient
+from .safety import AuditLog, Redactor
+from .tools import discovery, query
 
 
 def _host_only(url: str) -> str:
@@ -21,8 +25,7 @@ def _host_only(url: str) -> str:
     return urlsplit(url).netloc or url
 
 
-def build_server(config: Config | None = None) -> tuple[FastMCP, Config, HcmClient]:
-    cfg = config or load_config()
+def build_context(cfg: Config) -> ServerContext:
     auth = build_auth(cfg.auth)
     client = HcmClient(
         cfg.server.base_url,
@@ -31,7 +34,15 @@ def build_server(config: Config | None = None) -> tuple[FastMCP, Config, HcmClie
         default_limit=cfg.limits.default_limit,
         max_limit=cfg.limits.max_limit,
     )
+    catalog = Catalog(client, cfg.modules)
+    redactor = Redactor(enabled=not cfg.features.sensitive_fields_enabled)
+    audit = AuditLog(cfg.audit.path, enabled=cfg.audit.enabled)
+    return ServerContext(config=cfg, client=client, catalog=catalog, redactor=redactor, audit=audit)
 
+
+def build_server(config: Config | None = None) -> tuple[FastMCP, ServerContext]:
+    cfg = config or load_config()
+    ctx = build_context(cfg)
     mcp = FastMCP("aj-oracle-fusion-hcm")
 
     @mcp.tool()
@@ -49,16 +60,20 @@ def build_server(config: Config | None = None) -> tuple[FastMCP, Config, HcmClie
             "transport": cfg.transport.type,
             "modules": cfg.modules.model_dump(),
             "features": cfg.features.model_dump(),
+            "catalog_size": len(ctx.catalog.list_resources(limit=10_000)),
+            "redaction_active": ctx.redactor.enabled,
         }
 
-    return mcp, cfg, client
+    discovery.register(mcp, ctx)
+    query.register(mcp, ctx)
+    return mcp, ctx
 
 
 def run(config: Config | None = None) -> None:
-    mcp, cfg, _client = build_server(config)
-    if cfg.transport.type == "http":
-        mcp.settings.host = cfg.transport.host
-        mcp.settings.port = cfg.transport.port
+    mcp, ctx = build_server(config)
+    if ctx.config.transport.type == "http":
+        mcp.settings.host = ctx.config.transport.host
+        mcp.settings.port = ctx.config.transport.port
         mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")

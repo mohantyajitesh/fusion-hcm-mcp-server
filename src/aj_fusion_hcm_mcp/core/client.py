@@ -204,5 +204,6 @@ class HcmClient:
                 return "not_provisioned"
             if exc.status in (401, 403):
                 return "no_access"
-            raise
+            # network failure (0) or server error (5xx) — transient/unknown
+            return "unreachable"
         return "provisioned"
