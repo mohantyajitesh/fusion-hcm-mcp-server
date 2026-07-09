@@ -55,3 +55,36 @@ def test_summarize_describe_fallback_on_unknown_shape():
     summary = summarize_describe("workers", {"unexpected": True})
     assert summary["resource"] == "workers"
     assert "raw" in summary
+
+
+def test_summarize_surfaces_child_actions_excluding_crud():
+    raw = {"Resources": {"workers": {
+        "attributes": [{"name": "PersonNumber", "updatable": True}],
+        "children": {"workRelationships": {"item": {"actions": {
+            "terminate": {}, "changeLegalEmployer": {}, "get": {}, "update": {},
+        }}}},
+        "actions": {},
+    }}}
+    summary = summarize_describe("workers", raw)
+    assert "workRelationships" in summary["children"]
+    assert set(summary["child_actions"]["workRelationships"]) == {
+        "terminate", "changeLegalEmployer"
+    }  # generic CRUD verbs excluded
+
+
+async def test_list_live_merges_and_dedupes_against_seed():
+    from aj_fusion_hcm_mcp.config import ModulesConfig
+    from tests.conftest import FakeClient
+
+    client = FakeClient()
+    # live index includes a seed resource (workers) and a novel one
+    client.set("describe_catalog", lambda **kw: {"Resources": {
+        "workers": {"title": "Workers"},
+        "grievanceCases": {"title": "Grievance Cases"},
+    }})
+    cat = Catalog(client, ModulesConfig())
+    merged = await cat.list_live(limit=10_000)
+    names = {r["name"]: r["source"] for r in merged}
+    assert names["workers"] == "seed-catalog"          # seed wins, not duplicated
+    assert names["grievanceCases"] == "live-index"     # novel resource surfaced
+    assert sum(1 for r in merged if r["name"] == "workers") == 1

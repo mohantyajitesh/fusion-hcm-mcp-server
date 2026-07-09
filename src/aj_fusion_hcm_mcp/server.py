@@ -1,8 +1,9 @@
 """FastMCP server assembly and transport selection.
 
-Wires config -> auth -> REST client -> catalog/safety into a shared context,
-then registers the Phase 1 read tools (discovery + query) plus a diagnostic
-``server_info`` tool.
+Wires config -> auth -> (redactor + audit) -> REST client -> catalog into a
+shared context, then registers all 16 tools. The redactor and audit are built
+BEFORE the client and injected into it, so the client is the inescapable safety
+floor (DESIGN.md §7).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from .context import ServerContext
 from .core.catalog import Catalog
 from .core.client import HcmClient
 from .safety import AuditLog, Redactor
-from .tools import discovery, query
+from .tools import atom, discovery, query, workflows, writes
 
 
 def _host_only(url: str) -> str:
@@ -27,16 +28,20 @@ def _host_only(url: str) -> str:
 
 def build_context(cfg: Config) -> ServerContext:
     auth = build_auth(cfg.auth)
+    # Build safety layer FIRST, then inject into the client so redaction + audit
+    # apply even to direct client callers.
+    redactor = Redactor(enabled=not cfg.features.sensitive_fields_enabled)
+    audit = AuditLog(cfg.audit.path, enabled=cfg.audit.enabled)
     client = HcmClient(
         cfg.server.base_url,
         cfg.server.rest_version,
         auth,
         default_limit=cfg.limits.default_limit,
         max_limit=cfg.limits.max_limit,
+        redactor=redactor,
+        audit=audit,
     )
     catalog = Catalog(client, cfg.modules)
-    redactor = Redactor(enabled=not cfg.features.sensitive_fields_enabled)
-    audit = AuditLog(cfg.audit.path, enabled=cfg.audit.enabled)
     return ServerContext(config=cfg, client=client, catalog=catalog, redactor=redactor, audit=audit)
 
 
@@ -66,6 +71,9 @@ def build_server(config: Config | None = None) -> tuple[FastMCP, ServerContext]:
 
     discovery.register(mcp, ctx)
     query.register(mcp, ctx)
+    workflows.register(mcp, ctx)
+    atom.register(mcp, ctx)
+    writes.register(mcp, ctx)
     return mcp, ctx
 
 

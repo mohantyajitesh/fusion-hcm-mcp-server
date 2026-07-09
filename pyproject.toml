@@ -22,6 +22,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# OS credential store (keyring) + corporate TLS trust (truststore) for local
+# Claude Desktop use. Not needed in the Docker/Linux path (imports are guarded).
+desktop = [
+  "keyring>=24",
+  "truststore>=0.9",
+]
 dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",

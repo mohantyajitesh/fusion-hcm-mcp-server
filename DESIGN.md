@@ -349,3 +349,51 @@ Design rules that keep it reusable:
 - **Version-tolerant** — pinned `rest_version` per deployment; describe-at-runtime absorbs attribute drift across Oracle releases.
 - **Flexfield-agnostic** — DFF/EFF customizations are read from `/describe`, so each customer's custom attributes work with no changes.
 - **Per-deployment audit log** — each instance owns its own audit trail; no cross-customer data ever shares a process (§0).
+
+---
+
+## 13. Implementation status & ADF ground truth
+
+### 13.1 What is built (16 tools)
+
+- **Diagnostics:** `server_info`
+- **Discovery:** `list_resources` (seed + live index), `describe_resource` (attrs/children/actions/**child_actions**), `get_capabilities` (concurrent probes)
+- **Read:** `query_resource`, `get_record`
+- **Workflows:** `find_worker`, `get_worker_profile`, `list_direct_reports`, `get_reporting_chain`, `lookup_org`, `get_current_compensation`, `list_absences`
+- **Change feeds:** `list_changes` (ATOM, gated by `features.atom_enabled`)
+- **Writes:** `mutate_record`, `run_action` (gated by `features.writes_enabled`, dry-run default, schema-validated, audited)
+
+**Client-layer safety floor:** the `HcmClient` has the redactor + audit injected, and every semantic operation runs through `_guarded` — so redaction and audit are inescapable even for a caller that bypasses the tools. Blocked/rejected writes are audited too.
+
+### 13.2 ADF ground truth (pod-verified — do not "fix" these away)
+
+1. Pod host is `<pod>.fa.<datacenter>.oraclecloud.com` (e.g. `.fa.us6.`); a wrong host returns a generic Akamai 503 (wrong URL, not a code bug).
+2. Nested `expand` (`a.b.c`) returns grandchild collections **empty** — follow the child's HATEOAS link via `get_href`.
+3. `onlyData=true` strips links server-side — `keep_links` must suppress `onlyData`.
+4. `limit` propagates to **expanded child collections** — use a large limit when expanding (`_EXPAND_LIMIT = 200`).
+5. Manager rows may lack `ManagerPersonId` (only `ManagerAssignmentNumber`) — resolve via default numbering `E<PersonNumber>`, verified by lookup.
+6. Action envelope: `parameters` must be a **list of single key-value objects**; a combined object → 400.
+7. Terminate `actionCode="TERMINATION"` works; `"RESIGNATION"` needs a paired `reasonCode`.
+8. `absences` honors `q` only on person attributes — filter status/date client-side (lowercase attribute names).
+9. Child-level actions are hidden unless `summarize_describe` surfaces `child_actions` (terminate/changeLegalEmployer live under `workRelationships`).
+10. `emps`/`workers` REST key is a ~196-char composite hash from the item's `self` link, NOT PersonId — obtain via `query(..., keep_links=True)`.
+11. `describe_catalog` is ~38MB — distilled to name/title immediately, never returned whole.
+12. Some capability probes hang >60s — single-shot, 15s timeout, concurrent.
+13. Redaction is substring keyword-based — idempotent; documented over/under-redaction by field name.
+14. Diff RAW then redact — never redact before comparing (avoids falsely flagging unchanged sensitive fields).
+15. `redact=False` is the client escape hatch, used only by the write-diff (which re-redacts).
+
+---
+
+## 14. Security model & known gaps
+
+**Safe-by-default:** reads redacted unless `sensitive_fields_enabled`; writes off unless `writes_enabled`; dry-run default; the client-layer redaction+audit floor is inescapable. The real **authorization ceiling is the Oracle integration user's RBAC** — least-privilege that account.
+
+**Known gaps (documented honestly):**
+- **(a) No per-caller authorization** — any client with writes enabled can do anything the integration user can. Future: per-user SSO / delegated identity so Oracle enforces each user's RBAC. *Deferred.* OAuth2 today is a client-credentials **app** identity (super-user), not per-user.
+- **(b) Module capabilities are reported, not enforced** — `get_capabilities` informs; it does not block queries to unlicensed modules (Oracle's own 404/403 does).
+- **(c) HTTP transport is unauthenticated** — stdio only for production; HTTP/SSE is for trusted-network/dev use.
+- **(d) Audit is local and untampered** — ship the JSONL to a SIEM for compliance retention/integrity.
+- **(e) Redaction is keyword/substring-based** — over-redacts some fields (e.g. `SalaryBasisType`), under-redacts non-matching custom fields. Acceptable and documented; tune keywords per deployment.
+
+**Tested auth:** basic (dev). **Deferred:** per-user delegated identity, capability enforcement, authenticated HTTP transport, SIEM audit shipping.

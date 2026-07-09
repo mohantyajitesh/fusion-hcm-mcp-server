@@ -4,7 +4,7 @@ An [MCP](https://modelcontextprotocol.io) server that lets AI models interact wi
 
 Built to be **packaged once and reused across many Fusion HCM customers**, regardless of which modules they license, how their flexfields are configured, or which Oracle release they run.
 
-> ⚠️ **Status:** Early development. The technical design is complete ([DESIGN.md](DESIGN.md)). **Phase 1 read core is implemented** — discovery (`list_resources`, `describe_resource`, `get_capabilities`), generic read (`query_resource`, `get_record`), `q=` filter validation, and the safety layer (PII redaction + audit log). Pending validation against a live pod. Writes/ATOM/BIP follow in later phases.
+> ⚠️ **Status:** Feature-complete build, **pending live-pod validation**. All **16 tools** are implemented (discovery, generic read, 7 curated workflows, ATOM change feeds, and gated writes), with an inescapable client-layer redaction + audit floor. 60 unit tests pass; the Docker image and stdio server boot with all 16 tools. The one open gap is validation against a real Fusion pod — see [docs/TEST_CASES.md](docs/TEST_CASES.md) §3 and [DESIGN.md](DESIGN.md) §13–§14.
 
 ---
 
@@ -32,27 +32,29 @@ safety/   PII redaction · audit log · dry-run · confirm gates
 config.py base URL · pinned REST version · scopes · feature & module flags
 ```
 
-## Tools (Phase 1 read core)
+## Tools (16)
 
-| Tool | Purpose |
+| Group | Tools |
 |---|---|
-| `list_resources` | Search/enumerate the HCM resource catalog |
-| `describe_resource` | Return a resource's schema, children, and actions (`/describe`) |
-| `get_capabilities` | Report which modules are live on this pod |
-| `query_resource` | Generic GET with `q`/`fields`/`expand`/paging — the workhorse |
-| `get_record` | Fetch one record by key, optionally expanding children |
+| Diagnostics | `server_info` |
+| Discovery | `list_resources` · `describe_resource` · `get_capabilities` |
+| Read | `query_resource` · `get_record` |
+| Workflows | `find_worker` · `get_worker_profile` · `list_direct_reports` · `get_reporting_chain` · `lookup_org` · `get_current_compensation` · `list_absences` |
+| Change feeds | `list_changes` (ATOM — gated by `features.atom_enabled`) |
+| Writes | `mutate_record` · `run_action` (gated by `features.writes_enabled`, dry-run default, schema-validated) |
 
-Writes (`mutate_record`, `run_action`), ATOM change-feeds, and BI Publisher tools are specified in the design and arrive in later phases — all off by default.
+The generic `query_resource` / `get_record` / `describe_resource` work against **any** of the ~600 HCM resources; the workflows are curated shortcuts for common HR questions.
 
 ## Roadmap
 
-| Phase | Deliverable |
-|---|---|
-| **1** | Generic read core + auth + discovery + safety scaffolding |
-| **2** | ~15 curated HR workflow tools |
-| **3** | Gated writes + custom actions + audit |
-| **4** | ATOM change feeds (new hires, terminations, updates) |
-| **5** | BI Publisher / HCM Extracts reporting |
+| Phase | Deliverable | Status |
+|---|---|---|
+| **1** | Generic read core + auth + discovery + safety floor | ✅ Built |
+| **2** | Curated HR workflow tools | ✅ Built |
+| **3** | Gated writes + custom actions + audit | ✅ Built |
+| **4** | ATOM change feeds | ✅ Built |
+| **live** | Validation against a real Fusion pod | ⛔ Pending |
+| **5** | BI Publisher / HCM Extracts reporting | ◻ Future |
 
 ## Stack
 

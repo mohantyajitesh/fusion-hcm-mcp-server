@@ -22,6 +22,7 @@ def register(mcp: FastMCP, ctx: ServerContext) -> None:
         limit: int = 25,
         offset: int = 0,
         total_results: bool = False,
+        effective_date: str | None = None,
     ) -> dict[str, Any]:
         """Query any Oracle Fusion HCM resource (the generic read workhorse).
 
@@ -29,6 +30,7 @@ def register(mcp: FastMCP, ctx: ServerContext) -> None:
         - ``fields``: restrict returned attributes (strongly recommended to keep
           responses small). Use ``describe_resource`` to find valid names.
         - ``expand``: child collections to inline.
+        - ``effective_date``: as-of date (YYYY-MM-DD) for date-effective data.
         Sensitive fields (national IDs, salary, DOB) are redacted unless the
         deployment enables them. Filters are validated against the schema first.
         """
@@ -43,6 +45,7 @@ def register(mcp: FastMCP, ctx: ServerContext) -> None:
             limit=limit,
             offset=offset,
             total_results=total_results,
+            effective_date=effective_date,
         )
         result["items"] = ctx.redactor.redact(result["items"])
         ctx.audit.record(

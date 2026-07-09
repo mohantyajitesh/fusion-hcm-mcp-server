@@ -1,5 +1,5 @@
 """MCP tool modules. Each exposes ``register(mcp, ctx)``."""
 
-from . import discovery, query
+from . import atom, discovery, query, workflows, writes
 
-__all__ = ["discovery", "query"]
+__all__ = ["atom", "discovery", "query", "workflows", "writes"]

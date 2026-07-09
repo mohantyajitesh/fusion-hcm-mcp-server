@@ -1,14 +1,16 @@
-"""Resource catalog: bundled seed list + live ``/describe`` cache + capability
-discovery.
+"""Resource catalog: bundled seed list + live ``/describe`` cache + live index +
+capability discovery.
 
 The seed catalog lets ``list_resources`` work offline and degrade gracefully;
-``describe`` confirms reality against the pod and caches schemas. Capability
-discovery probes one representative resource per ``auto`` module to decide which
-tool groups are live (DESIGN.md §12.3).
+``describe`` confirms reality against the pod and caches schemas; the live index
+distills the ~38MB catalog describe to name/title for full-surface browsing.
+Capability discovery probes one representative resource per ``auto`` module,
+concurrently (DESIGN.md §12.3).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 from importlib.resources import files
 from typing import Any
@@ -17,8 +19,7 @@ from . import filters
 from .client import HcmClient
 from .errors import HcmApiError
 
-# One representative resource per module (DESIGN.md §12.4). Probe names are
-# confirmed against the pinned REST version during the live-pod phase.
+# One representative resource per module (DESIGN.md §12.4).
 MODULE_PROBES: dict[str, str] = {
     "core_hr": "workers",
     "compensation": "salaries",
@@ -31,14 +32,31 @@ MODULE_PROBES: dict[str, str] = {
     "time_labor": "timeRecords",
 }
 
+# Generic CRUD verbs excluded when surfacing a child's business actions.
+_GENERIC_ACTIONS = {"get", "create", "update", "delete", "upsert", "replace"}
+
 
 def _load_seed() -> list[dict[str, str]]:
     raw = files("aj_fusion_hcm_mcp.data").joinpath("seed_catalog.json").read_text("utf-8")
     return json.loads(raw).get("resources", [])
 
 
+def _action_names(actions_src: Any) -> list[str]:
+    if isinstance(actions_src, dict):
+        return [a for a in actions_src.keys()]
+    if isinstance(actions_src, list):
+        return [a.get("name") if isinstance(a, dict) else a for a in actions_src]
+    return []
+
+
 def summarize_describe(resource: str, raw: dict[str, Any]) -> dict[str, Any]:
-    """Reduce Oracle's verbose ``/describe`` payload to attributes/children/actions."""
+    """Reduce Oracle's verbose ``/describe`` to attributes/children/actions.
+
+    CRITICAL: on the live pod ``children`` is a dict, and each child's business
+    actions (terminate, changeLegalEmployer, ...) live under ``child.item.actions``.
+    We surface them as ``child_actions: {childName: [action, ...]}`` (excluding
+    generic CRUD verbs) — otherwise the most important write operations are hidden.
+    """
     resources = raw.get("Resources") if isinstance(raw, dict) else None
     node: Any = None
     if isinstance(resources, dict):
@@ -51,25 +69,45 @@ def summarize_describe(resource: str, raw: dict[str, Any]) -> dict[str, Any]:
         for a in (node.get("attributes") or [])
         if isinstance(a, dict)
     ]
-    children = [
-        c["name"] if isinstance(c, dict) and c.get("name") else c
-        for c in (node.get("children") or [])
-        if isinstance(c, (dict, str))
-    ]
-    actions_node = node.get("actions")
-    if isinstance(actions_node, dict):
-        actions = list(actions_node.keys())
-    elif isinstance(actions_node, list):
-        actions = [a.get("name") if isinstance(a, dict) else a for a in actions_node]
-    else:
-        actions = []
+
+    child_names: list[str] = []
+    child_actions: dict[str, list[str]] = {}
+
+    def _add_child(name: str, cnode: Any) -> None:
+        child_names.append(name)
+        actions_src = None
+        if isinstance(cnode, dict):
+            item = cnode.get("item")
+            if isinstance(item, dict):
+                actions_src = item.get("actions")
+            if actions_src is None:
+                actions_src = cnode.get("actions")
+        business = [
+            a for a in _action_names(actions_src) if a and a.lower() not in _GENERIC_ACTIONS
+        ]
+        if business:
+            child_actions[name] = business
+
+    children_node = node.get("children")
+    if isinstance(children_node, dict):
+        for name, cnode in children_node.items():
+            _add_child(name, cnode)
+    elif isinstance(children_node, list):
+        for c in children_node:
+            if isinstance(c, dict) and c.get("name"):
+                _add_child(c["name"], c)
+            elif isinstance(c, str):
+                child_names.append(c)
+
+    actions = [a for a in _action_names(node.get("actions")) if a]
 
     return {
         "resource": resource,
         "title": node.get("title"),
         "attributes": attributes,
-        "children": [c for c in children if c],
-        "actions": [a for a in actions if a],
+        "children": child_names,
+        "actions": actions,
+        "child_actions": child_actions,
     }
 
 
@@ -81,6 +119,7 @@ class Catalog:
         self._describe_cache: dict[str, dict[str, Any]] = {}
         self._attrs_cache: dict[str, set[str]] = {}
         self._capabilities: dict[str, dict[str, Any]] | None = None
+        self._live_index: dict[str, str] | None = None
 
     # ---- seed catalog (offline) ------------------------------------------
 
@@ -99,6 +138,39 @@ class Catalog:
                 or needle in r.get("title", "").lower()
                 or needle in r.get("description", "").lower()
             ]
+        return results[:limit]
+
+    # ---- live full index (~650 resources) --------------------------------
+
+    async def _load_live_index(self) -> dict[str, str]:
+        if self._live_index is None:
+            raw = await self._client.describe_catalog()
+            resources = raw.get("Resources") if isinstance(raw, dict) else None
+            index: dict[str, str] = {}
+            if isinstance(resources, dict):
+                for name, node in resources.items():
+                    title = node.get("title") if isinstance(node, dict) else None
+                    index[name] = title or name
+            self._live_index = index
+        return self._live_index
+
+    async def list_live(
+        self, search: str | None = None, module: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        """Seed catalog merged with the live index (deduped against seed)."""
+        seed = self.list_resources(search=search, module=module, limit=10_000)
+        results: list[dict[str, Any]] = [{**r, "source": "seed-catalog"} for r in seed]
+        seed_names = {r["name"] for r in results}
+        index = await self._load_live_index()
+        needle = search.lower() if search else None
+        for name, title in index.items():
+            if name in seed_names:
+                continue
+            if module:  # module filter applies to seed-tagged resources only
+                continue
+            if needle and needle not in name.lower() and needle not in (title or "").lower():
+                continue
+            results.append({"name": name, "title": title, "module": None, "source": "live-index"})
         return results[:limit]
 
     # ---- live describe (cached) ------------------------------------------
@@ -124,32 +196,37 @@ class Catalog:
                 return  # can't validate offline / on error — let the pod decide
         filters.validate_q(q, attrs or set())
 
-    # ---- capability discovery --------------------------------------------
+    # ---- capability discovery (concurrent) -------------------------------
 
     async def get_capabilities(self, refresh: bool = False) -> dict[str, dict[str, Any]]:
         if self._capabilities is not None and not refresh:
             return self._capabilities
 
+        modes = self._modules.model_dump()
         caps: dict[str, dict[str, Any]] = {}
-        for module, mode in self._modules.model_dump().items():
+        auto: list[str] = []
+        for module, mode in modes.items():
             if mode == "off":
                 caps[module] = {"mode": mode, "status": "disabled", "enabled": False}
-                continue
-            if mode == "on":
+            elif mode == "on":
                 caps[module] = {"mode": mode, "status": "enabled", "enabled": True}
-                continue
-            # mode == "auto": probe the pod
-            probe = MODULE_PROBES.get(module)
-            if probe is None:
+            elif MODULE_PROBES.get(module) is None:
                 caps[module] = {"mode": mode, "status": "unknown", "enabled": False}
-                continue
-            status = await self._client.classify_module(probe)
-            caps[module] = {
-                "mode": mode,
-                "status": status,
-                "enabled": status == "provisioned",
-                "probe": probe,
-            }
+            else:
+                auto.append(module)
+
+        if auto:
+            # Probe concurrently — sequential probing blows MCP tool timeouts.
+            statuses = await asyncio.gather(
+                *(self._client.classify_module(MODULE_PROBES[m]) for m in auto)
+            )
+            for module, status in zip(auto, statuses):
+                caps[module] = {
+                    "mode": "auto",
+                    "status": status,
+                    "enabled": status == "provisioned",
+                    "probe": MODULE_PROBES[module],
+                }
 
         self._capabilities = caps
         return caps
