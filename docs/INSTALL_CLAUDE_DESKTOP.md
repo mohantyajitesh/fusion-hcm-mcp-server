@@ -22,7 +22,7 @@ There are two supported ways to run the server. Pick one:
 1. **Claude Desktop** installed (macOS or Windows).
 2. The code on your machine — clone the repo, or download the ZIP from GitHub
    (green **Code** button → **Download ZIP**) and extract it. The extracted
-   folder is named `aj_oracle_fusion_MCP-main`.
+   folder is named `fusion-hcm-mcp-server-main`.
 3. **Network line-of-sight to your Fusion pod** — corporate VPN/firewall must
    allow HTTPS to `https://<pod>.fa.<datacenter>.oraclecloud.com`. Test the URL
    in a browser first. A generic Akamai 503 usually means a wrong pod host, not
@@ -40,7 +40,7 @@ No plaintext password anywhere on disk.
 
 macOS / Linux:
 ```bash
-cd aj_oracle_fusion_MCP-main
+cd fusion-hcm-mcp-server-main
 python3 -m venv .venv
 source .venv/bin/activate
 pip install ".[desktop]"        # includes keyring + truststore
@@ -48,7 +48,7 @@ pip install ".[desktop]"        # includes keyring + truststore
 
 Windows (PowerShell):
 ```powershell
-cd aj_oracle_fusion_MCP-main
+cd fusion-hcm-mcp-server-main
 py -3 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install ".[desktop]"
@@ -105,7 +105,7 @@ Find the absolute path of the console script:
     "oracle-fusion-hcm": {
       "command": "/ABSOLUTE/PATH/TO/.venv/bin/aj-fusion-hcm-mcp",
       "env": {
-        "CONFIG_FILE": "/ABSOLUTE/PATH/TO/aj_oracle_fusion_MCP-main/config.toml"
+        "CONFIG_FILE": "/ABSOLUTE/PATH/TO/fusion-hcm-mcp-server-main/config.toml"
       }
     }
   }
@@ -122,7 +122,7 @@ store.
 ### B1. Build the image
 
 ```bash
-cd aj_oracle_fusion_MCP-main
+cd fusion-hcm-mcp-server-main
 docker build -t aj-fusion-hcm-mcp:latest .
 ```
 

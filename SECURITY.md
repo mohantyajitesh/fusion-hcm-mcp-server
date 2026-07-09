@@ -5,7 +5,7 @@ compensation, national identifiers). Security reports are taken seriously.
 
 ## Reporting a vulnerability
 
-- **Email:** mohantyajitesh@gmail.com with subject line `[SECURITY] aj_oracle_fusion_MCP`
+- **Email:** mohantyajitesh@gmail.com with subject line `[SECURITY] fusion-hcm-mcp-server`
 - Or use GitHub's **private vulnerability reporting** on this repository
   (Security tab → Report a vulnerability), if enabled.
 
