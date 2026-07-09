@@ -49,7 +49,7 @@ def build_context(cfg: Config) -> ServerContext:
 def build_server(config: Config | None = None) -> tuple[FastMCP, ServerContext]:
     cfg = config or load_config()
     ctx = build_context(cfg)
-    mcp = FastMCP("aj-oracle-fusion-hcm")
+    mcp = FastMCP("fusion-hcm-mcp-server")
     # Report the package's own version in the MCP handshake (default would be
     # the mcp SDK's version — misleading in registry listings and client UIs).
     mcp._mcp_server.version = __version__
@@ -62,7 +62,7 @@ def build_server(config: Config | None = None) -> tuple[FastMCP, ServerContext]:
         deployment's configuration before exercising the HCM API.
         """
         return {
-            "name": "aj-oracle-fusion-hcm-mcp",
+            "name": "fusion-hcm-mcp-server",
             "rest_version": cfg.server.rest_version,
             "pod_host": _host_only(cfg.server.base_url),
             "auth_type": cfg.auth.type,
