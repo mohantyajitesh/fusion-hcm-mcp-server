@@ -1,0 +1,48 @@
+# Publish the Docker image to GitHub Container Registry (GHCR).
+#
+# Triggers:
+#  - automatically when a GitHub Release is published
+#  - manually via workflow_dispatch (e.g. to backfill an existing release)
+#
+# Images: ghcr.io/mohantyajitesh/fusion-hcm-mcp-server:<version> and :latest
+
+name: Publish Docker image
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from pyproject
+        id: version
+        run: |
+          echo "version=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/mohantyajitesh/fusion-hcm-mcp-server:${{ steps.version.outputs.version }}
+            ghcr.io/mohantyajitesh/fusion-hcm-mcp-server:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/mohantyajitesh/fusion-hcm-mcp-server
+            org.opencontainers.image.description=HCM MCP Server for Oracle Fusion Cloud (unofficial)
+            org.opencontainers.image.licenses=Apache-2.0
